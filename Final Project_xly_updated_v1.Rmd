@@ -1,0 +1,396 @@
+---
+title: 'STAT 578 - Final Project'
+output: html_document
+---
+
+##Part 1 - Load in the data and libraries
+
+```{r}
+
+library("rjags")
+
+library("lattice")
+
+setwd("C:/Users/xyang/Desktop/stat578 Advanced Bayesian Modeling/Final Projet/group")
+
+#load data, initialize starting values and set up a model
+project_data <- read.csv(file="stat_578_data.csv")
+```
+
+##Part 2(a) 
+- Take a subset of the data. Specifically, 1,000 random sample customers 
+
+
+```{r}
+
+#Randomly select 1,000 rows of data
+set.seed(123)
+analysis_data = project_data[sample(nrow(project_data), 1000),]
+
+```
+
+
+##Part 2(b) 
+- For car_age > 20, change it to 20 
+
+```{r}
+
+#For car_age > 20, set it to 20 for the three reasons below:
+#(1) most cars' useful life is less than 20 years.
+#(2) the number of vehicles older than 20 make up about 2.3 % of the overall data
+length(analysis_data[analysis_data$car_age > 20, "car_age"])/1000
+
+#(3) the insurance cost for car_age > 20 seems to have the same mean as car_age <= 20
+hist(analysis_data[analysis_data$car_age > 20, "cost"])
+hist(analysis_data[analysis_data$car_age <= 20, "cost"])
+
+#So, for car_age > 20, set it to 20. 
+index <- analysis_data$car_age > 20
+analysis_data$car_age[analysis_data$car_age>20] <- 20
+```
+
+## Part 2(c) Univariate Plot
+```{r}
+library(ggplot2)
+```
+
+### Distribution of group size
+```{r}
+ggplot()+
+    geom_histogram(data= analysis_data, aes(x= group_size),
+             colour="black",fill = I('#099DD9'),binwidth = 0.5)
+```
+
+### Distribution of homeowner
+```{r}
+pie <- ggplot(analysis_data, 
+              aes(x = factor(1), 
+                  fill = factor(homeowner))) +
+    geom_bar(width = 1)
+pie + coord_polar(theta = "y")+labs(fill = "Home Owner")
+```
+
+### Distribution of car_age
+```{r}
+ggplot()+
+    geom_histogram(data= analysis_data, aes(x= car_age),
+             colour="black",fill = I('#099DD9'),binwidth = 0.5)+
+    xlim(0,20)
+```
+
+### Distribution of married_couple
+```{r}
+pie <- ggplot(analysis_data, 
+              aes(x = factor(1), 
+                  fill = factor(married_couple))) +
+    geom_bar(width = 1)
+pie + coord_polar(theta = "y")+labs(fill = "married couple")
+```
+
+
+## 2. features versus cost.
+
+```{r}
+library(GGally)
+library(corrplot) 
+set.seed(1)
+d_sample = analysis_data[sample(1:length(analysis_data$cost), 1000),
+                    c("cost","group_size","homeowner",
+                      "car_age","married_couple", "shopping_pt")]
+res <- round(cor(d_sample, use="complete.obs"),2)
+corrplot(res, type = "upper", 
+         tl.col = "black", tl.srt = 45)
+ggpairs(data=d_sample)
+```
+
+We can easily find car age and home owner are more related to the cost.
+
+##Part 3(a)
+-Fit a model for y[i] ~ beta_intercept + beta_homeowner*owner[i] + beta_married_couple[i] + beta_age x car_age[i]
+-Check for convergence of the regression coefficients
+
+```{r }
+
+
+
+d1 <- list( cost = analysis_data$cost
+            ,owner = analysis_data$homeowner
+            ,married = analysis_data$married_couple
+            ,age = analysis_data$car_age
+           )
+
+inits1 <- list( 
+              list(beta_intercept = 1000, beta_homeowner = 1000, beta_married = 1000
+                   ,beta_age = 1000, sigmasqinv = 1000000,
+                   .RNG.name = "base::Mersenne-Twister", .RNG.seed = 101)
+
+              ,list(beta_intercept = -1000, beta_homeowner = -1000, beta_married = 1000
+                   ,beta_age = 1000, sigmasqinv = 0.0000001,
+                   .RNG.name = "base::Mersenne-Twister", .RNG.seed = 103)              
+              
+              ,list(beta_intercept = 1000, beta_homeowner = 1000, beta_married = -1000
+                   ,beta_age = -1000, sigmasqinv = 1000000,
+                   .RNG.name = "base::Mersenne-Twister", .RNG.seed = 105)      
+              
+              ,list(beta_intercept = -1000, beta_homeowner = -1000, beta_married = -1000
+                   ,beta_age = -1000, sigmasqinv = 0.0000001,
+                   .RNG.name = "base::Mersenne-Twister", .RNG.seed = 107)                    
+              )
+
+
+m1 <- jags.model("final_project_cost1.bug",d1,inits1,n.chains=4,n.adapt=1000)
+
+update(m1, 10000)
+
+x1 <- coda.samples(m1, c("beta_intercept", "beta_homeowner","beta_married","beta_age","sigmasq","cost_rep"),n.iter=20000, thin = 10)
+
+x1_sub <- x1[,c("beta_intercept", "beta_homeowner","beta_married","beta_age","sigmasq")]
+
+gelman.diag(x1_sub,autoburnin=FALSE)
+
+gelman.plot(x1_sub,autoburnin=FALSE)
+
+effectiveSize(x1_sub)
+
+
+```
+
+
+##Part 3(b) 
+- Show summary of beta_homeowner, beta_married, beta_age, and sigmasq
+```{r}
+
+summary(x1_sub)
+
+```
+
+
+##Part 3(c) 
+- Check 95% confidence interval for statistical significance for beta_homeowner, beta_married and beta_age
+```{r}
+
+post.samp1 <- as.matrix(x1)
+
+##The 95% confidence interval of beta_homeowner does not include 0
+#The mean
+mean(post.samp1[,"beta_homeowner"])
+
+#The 95% confidence interval
+quantile(post.samp1[,"beta_homeowner"], c(0.025,0.975))
+
+
+##The 95% confidence interval of beta_married does not include 0
+#The mean
+mean(post.samp1[,"beta_married"])
+
+#The 95% confidence interval
+quantile(post.samp1[,"beta_married"], c(0.025,0.975))
+
+
+##The 95% confidence interval of beta_age does not include 0
+#The mean
+mean(post.samp1[,"beta_age"])
+
+#The 95% confidence interval
+quantile(post.samp1[,"beta_age"], c(0.025,0.975))
+
+
+```
+
+##Part 3(d) 
+- Check dic for model in Part 3(c) 
+```{r}
+dic.samples(m1,50000)
+```
+
+
+## Part 4(a)
+
+-Fit a model for y[i] ~ beta_intercept + beta.age x car_age[i]  
+-Check for convergence of the regression coefficients
+
+```{r }
+#Coda summary of my results for the monitored parameters
+
+
+d2 <- list( cost = analysis_data$cost
+            ,age = analysis_data$car_age
+           )
+
+inits2 <- list( 
+              list(beta_intercept = 1000
+                   ,beta_age = 1000, sigmasqinv = 1000000,
+                   .RNG.name = "base::Mersenne-Twister", .RNG.seed = 101)
+
+              ,list(beta_intercept = -1000
+                   ,beta_age = 1000, sigmasqinv = 0.0000001,
+                   .RNG.name = "base::Mersenne-Twister", .RNG.seed = 103)              
+              
+              ,list(beta_intercept = 1000
+                   ,beta_age = -1000, sigmasqinv = 1000000,
+                   .RNG.name = "base::Mersenne-Twister", .RNG.seed = 105)      
+              
+              ,list(beta_intercept = -1000
+                   ,beta_age = -1000, sigmasqinv = 0.0000001,
+                   .RNG.name = "base::Mersenne-Twister", .RNG.seed = 107)                    
+              )
+
+
+m2 <- jags.model("final_project_cost2.bug",d2,inits2,n.chains=4,n.adapt=1000)
+
+update(m2, 10000)
+
+x2 <- coda.samples(m2, c("beta_intercept","beta_age","sigmasq","cost_rep"),n.iter=20000, thin = 10)
+
+x2_sub <- x2[,c("beta_intercept","beta_age","sigmasq")]
+
+gelman.diag(x2_sub,autoburnin=FALSE, multivariate=FALSE)
+
+gelman.plot(x2_sub,autoburnin=FALSE)
+
+effectiveSize(x2_sub)
+
+
+```
+
+## Part 4(b)
+
+- Show summary of beta_intercept, beta_age, and sigmasq
+
+```{r }
+
+summary(x2_sub)
+
+```
+
+
+## Part 4(c)
+- Check 95% confidence interval for statistical significance for beta_intercept and beta_age
+```{r }
+
+post.samp2 <- as.matrix(x2)
+
+##The 95% confidence interval of beta_intercept does not include 0
+#The mean
+mean(post.samp2[,"beta_intercept"])
+
+#The 95% confidence interval
+quantile(post.samp2[,"beta_intercept"], c(0.025,0.975))
+
+
+##The 95% confidence interval of beta_age does not include 0
+#The mean
+mean(post.samp2[,"beta_age"])
+
+#The 95% confidence interval
+quantile(post.samp2[,"beta_age"], c(0.025,0.975))
+
+```
+
+
+##Part 4(d) 
+- Check dic for model in Part 4(c) 
+```{r }
+
+dic.samples(m2,50000)
+
+```
+
+## Part 5(a)
+
+-Fit the following loglinear model 		
+    num_quotes[i] ~ dpois(lambda[i])  
+		log(lambda[i]) <- logtime + beta_intercept + beta_cost*cost_scaled[i]    
+-Check for convergence for statistical significance for the regression coefficients
+
+```{r }
+
+d3 <- list (num_quotes = analysis_data$shopping_pt
+            ,logtime = log(1)
+            ,cost_scaled = as.vector(scale(analysis_data$cost, scale=1*sd(analysis_data$cost)))
+            )
+            
+inits3 <- list(list(beta_intercept = 100 , beta_cost = 100
+               ,.RNG.name = "base::Mersenne-Twister", .RNG.seed = 101)
+
+               ,list(beta_intercept = -100 , beta_cost = 100
+               ,.RNG.name = "base::Mersenne-Twister", .RNG.seed = 103)
+
+               ,list(beta_intercept = 100 , beta_cost = -100
+               ,.RNG.name = "base::Mersenne-Twister", .RNG.seed = 105)
+
+               ,list(beta_intercept = -100 , beta_cost = -100
+               ,.RNG.name = "base::Mersenne-Twister", .RNG.seed = 107)
+
+              )
+
+m3 <- jags.model("final_project_point1.bug", d3, inits3, n.chains=4, n.adapt=1000)
+
+update(m3, 10000)
+
+x3 <- coda.samples(m3, c("beta_intercept","beta_cost", "num_quotes_rep", "lambda"), n.iter=20000, thin = 10)
+
+gelman.diag(x3[,1:3], autoburnin=FALSE)
+
+gelman.plot(x3[,1:3], autoburnin=FALSE)
+
+effectiveSize(x3[,1:3])
+
+```
+## Part (5)(b)
+
+- Show summary of beta_cost and beta_intercept
+
+```{r }
+
+summary(x3[,1:2]) 
+
+```
+
+## Part (5)(c)
+
+- Check 95% confidence interval for statistical significance for beta_intercept and beta_cost
+```{r }
+post.samp3 <- as.matrix(x3)
+
+##The 95% confidence interval of beta_cost does not include 1
+quantile(exp(post.samp3[,"beta_intercept"]),c(0.025,0.975))
+
+##The 95% confidence interval of beta_cost includes 1
+quantile(exp(post.samp3[,"beta_cost"]),c(0.025,0.975))
+```
+
+
+## Part (5)(d)
+
+-The p-value for the Chi-square test is 1. This indicates that the variance of the data is smaller than what the Poisson distribution assumes.
+
+```{r }
+
+post.samp3 <- as.matrix(x3)
+
+lambdas <- post.samp3[,paste("lambda[",1:nrow(analysis_data),"]", sep="")]
+
+num_quotes_srep <- post.samp3[,paste("num_quotes_rep[",1:nrow(analysis_data),"]", sep="")]
+
+Tchi <- numeric(nrow(num_quotes_srep))
+Tchirep <- numeric(nrow(num_quotes_srep))
+
+for(s in 1:nrow(num_quotes_srep)) {
+  Tchi[s] <- sum((analysis_data$shopping_pt - lambdas[s,])^2/lambdas[s,])
+  Tchirep[s] <- sum((num_quotes_srep[s,]-lambdas[s,])^2/lambdas[s,])
+}
+
+mean(Tchirep >= Tchi)
+
+
+```
+
+##Part 5(e) 
+- Check dic for model in Part 5
+```{r }
+dic.samples(m3,50000)
+```
+
+
+
