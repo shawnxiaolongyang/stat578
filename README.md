@@ -1,0 +1,5 @@
+# stat578
+Final project for stat 578
+We were interested in insurance data particularly, because analyses of these data ensure more accurate pricing of policies, improve customized product and services, foster stronger customer relationships, and prevent unnecessary financial losses. We sampled 1000 out of 97009 customers from Allstate’s Kaggle challenge and extracted various features, including the demographics of the customers and the age of their vehicles. The purpose of our analysis with the sample data is to identify the dominant/non-dominant factors for analyses of insurance costs and number of quotes obtained by the customers before purchasing insurance. The questions we were trying to address are 
+It is commonly accepted that homeowner status (Y/N), marital status (Y/N), and age of vehicle (in Yrs) are dominant factors in determining insurance cost. Is that true with our data?
+It is logical to think that, the more expensive insurance is, the more number of quotes customers obtain before purchasing insurance. Is that true with our data?
